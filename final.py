@@ -59,15 +59,15 @@ class Converter:
         variables = [f'({p.lefts[i]} {p.ops[i]} {p.rights[i]})' for i in range(len(p.lefts))]
         def build_z3logic(start, end):
             if start == end:
-                return variables[symbols[start]]
+                return variables[start]
             op = p.bin_ops[start]
-            left_logic = variables[symbols[start]]
+            left_logic = variables[start]
             right_logic = build_z3logic(start + 1, end)
 
             if op == '&':
-                return And(left_logic, right_logic)
+                return f'And({left_logic}, {right_logic})'
             elif op == '|':
-                return Or(left_logic, right_logic)
+                return f'Or({left_logic}, {right_logic})'
             else:
                 raise ValueError(f"Unsupported operator: {op}")
         z3_logic = build_z3logic(0, len(p.lefts) - 1)
@@ -148,7 +148,8 @@ class SymbolicVisitor(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If):
         # Compare, BoolOpによって表される制約を抽出する
-        print(node.test)
+        #print(node.test)
+        #print(self.visit(node.test))
         print(self.visit(node.test))
         return ;
 
