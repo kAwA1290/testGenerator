@@ -1,5 +1,4 @@
 import ast
-from z3 import *
 
 def ast_to_z3_expr(node, variables):
     if isinstance(node, ast.Name):
@@ -72,13 +71,12 @@ def get_all_path_constraints(program):
     variables = {name.id for name in ast.walk(tree) if isinstance(name, ast.Name)}
     all_path_constraints = []
     for node in ast.walk(tree):
-        print(node)
         if isinstance(node, ast.FunctionDef):
             for stmt in node.body:
                 if isinstance(stmt, ast.If):
                     print('-------------start-----------')
                     print('-------------dumped_stmt.test-----------')
-                    print(ast.dump(stmt.test))
+                    print(ast.dump(stmt.test, indent=4))
                     print('-------------dumped_stmt.orelse-----------')
                     print(type(stmt.orelse))
                     for n in stmt.orelse:
@@ -93,22 +91,12 @@ def get_all_path_constraints(program):
     return all_path_constraints
 
 if __name__ == "__main__":
-    #    sample_program = """
-    #def example_function(x):
-    #    if x > 0 or x < 888 & x > 10 & x < 100:
-    #        y = x + 1
-    #        if y > 0 & y < 888:
-    #            y = x - 1
-    #        if y > 10:
-    #            y = y + 1
-    #    elif x < 0:
-    #        y = x - 1
-    #    return y
-    #"""
     sample_program = """
-a = 123
-b = a * 10
-c = a * b
+def example_function(x):
+    y = 10
+    if 0 > (y * 2) or x < 888 & x > 10 & x < 100:
+        y = x + 1
+    return y
 """
     all_path_constraints = get_all_path_constraints(sample_program)
 
