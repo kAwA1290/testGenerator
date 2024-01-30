@@ -1,0 +1,4 @@
+bin_ops = ['&', '|', '&']
+symbols = ['a', 'b', 'c', 'd']
+result = 'Or(And(a, b), And(c, d))'
+

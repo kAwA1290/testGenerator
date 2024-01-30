@@ -22,6 +22,7 @@ class Converter:
             'BitOr': "|",
             'BitAnd': "&",
         }
+        self.parts = None
 
     def conv_op(self, op):
         try:
@@ -32,28 +33,51 @@ class Converter:
     def to_parts(self, left, ops, comparators):
         parts = self.Parts()
         parts.lefts.append(left)
-        parts.ops.append(self.conv_op(ops[0]))
-        parts.rights.append(comparators[-1])
-        print(parts.lefts)
-        print(parts.ops)
-        print(parts.rights)
-        for i, comparator in enumerate(comparators[1:-1]):
-            parts.lefts.append(comparator[0])
-            parts.ops.append(self.conv_op(comparator[1]))
-            parts.rights.append(comparator[2])
-            parts.bin_ops.append(self.conv_op(ops[i+1]))
-        return parts
+        parts.ops = [self.conv_op(op) for op in ops]
+        for i, comparator in enumerate(comparators):
+            if i == len(comparators) - 1:
+                parts.rights.append(comparator)
+                break
+            parts.rights.append(comparator[0])
+            parts.bin_ops.append(self.conv_op(comparator[1]))
+            parts.lefts.append(comparator[2])
+        self.parts = parts
 
-    def to_logic(self, left, ops, comparators):
+    def to_pylogic(self):
         # TODO if True or a > 1:などの場合に対応する
         # TODO opsの長さが1の場合に対応する
-        p = self.to_parts(left, ops, comparators)
+        p = self.parts
         res = ''
         for i in range(len(p.lefts)):
             res += f'({p.lefts[i]} {p.ops[i]} {p.rights[i]})'
             if i < len(p.bin_ops):
                 res += f' {p.bin_ops[i]} '
         return res
+
+    def to_z3logic(self):
+        p = self.parts
+        variables = [f'({p.lefts[i]} {p.ops[i]} {p.rights[i]})' for i in range(len(p.lefts))]
+        def build_z3logic(start, end):
+            if start == end:
+                return variables[symbols[start]]
+            op = p.bin_ops[start]
+            left_logic = variables[symbols[start]]
+            right_logic = build_z3logic(start + 1, end)
+
+            if op == '&':
+                return And(left_logic, right_logic)
+            elif op == '|':
+                return Or(left_logic, right_logic)
+            else:
+                raise ValueError(f"Unsupported operator: {op}")
+        z3_logic = build_z3logic(0, len(p.lefts) - 1)
+        return z3_logic
+
+    def to_logic(self, left, ops, comparators):
+        self.to_parts(left, ops, comparators)
+        pylogic = self.to_pylogic()
+        z3logic = self.to_z3logic()
+        return [pylogic, z3logic]
 
     class Parts:
 
@@ -138,6 +162,7 @@ class SymbolicVisitor(ast.NodeVisitor):
         left = self.visit(node.left)
         ops = [op.__class__.__name__ for op in node.ops]
         comparators = [self.visit(comparator) for comparator in node.comparators]
+        self.conv.to_parts(left, ops, comparators)
         return self.conv.to_logic(left, ops, comparators)
 
     def visit_BinOp(self, node: ast.BinOp):

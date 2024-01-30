@@ -6,7 +6,7 @@ for s in symbols:
     exec("%s = Int('%s')" % (s, s))
 # 変数定義
 
-equation = 'Or(n == x + y, x > 0, y > 0)'
+equation = 'Or(n == x + y, And(x > 0, y > 0))'
 # 基本制約
 s = Solver()
 s.add(eval(equation))
