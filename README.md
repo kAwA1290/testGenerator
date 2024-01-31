@@ -39,3 +39,20 @@ testcase: [c = 4, b = 1, a = 1]
 sat: (a > 0)
 testcase: [a = 1]
 ```
+
+### 実行例2
+以下のように到達不可能なifブロックを入力します。
+```
+if __name__ == "__main__":
+    sample = """
+if a > 100 & a < 100:
+    pass
+"""
+```
+以下のように、unsatと出力されます。
+```
+[~/testGenerator]> python app.py
+unsat: (a > 100) & (a < 100)
+```
+
+
