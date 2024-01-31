@@ -134,28 +134,34 @@ class SymbolicVisitor(ast.NodeVisitor):
         value = self.visit(node.value)
         self.store[target] = self.conv.assign_to_logic(value)
 
+
     def visit_If(self, node: ast.If):
         self.if_depth += 1
-        res = self.visit(node.test)
+        self_res = self.visit(node.test)
         self.if_depth -= 1
-        if self.if_depth == 0:
-            self.constraints.append(res)
-
+        body_res = []
         for body in node.body:
             if isinstance(body, ast.If):
                 self.if_depth += 1
-                rec_res = self.visit(body)
+                body_res.append(self.visit(body))
                 self.if_depth -= 1
-                if self.if_depth == 0:
-                    print(f'And({res}, {rec_res})')
-                          #self.constraints.append(f'And({res}, {rec_res})')
-        return res
+        res = []
+        for r in body_res:
+            for rr in r:
+                logic = [f'({self_res[0]}) & ({rr[0]})', f'And({self_res[1]}, {rr[1]})']
+                res.append(logic)
+        res.append(self_res)
+        if self.if_depth == 0:
+            for r in res:
+                self.constraints.append(r)
+        else:
+            return res
 
     def visit_BoolOp(self, node: ast.BoolOp):
         op = node.op.__class__.__name__
         left = self.visit(node.values[0])
         right = self.visit(node.values[1])
-        py = f'({left[0]} {self.conv.conv_op(op)} {right[0]})'
+        py = f'{left[0]} {self.conv.conv_op(op)} {right[0]}'
         z3 = f'{op}({left[1]}, {right[1]})'
         return [py, z3]
 
@@ -188,16 +194,16 @@ class SymbolicVisitor(ast.NodeVisitor):
 
 if __name__ == "__main__":
     sample = """
-if a > 0 | b > 0 | c < 5 & c < b & d < 5 & e < 5 | f < 5:
-    if a < 2 | b < 2 | c > 3 | d > 3:
+if a > 0:
+    if b < 2 & c > 3:
         print("a is not 1")
-    if a == 1 | b == 1 | c == 1 | d == 1:
-        pass
-    if a == 1 | b == 1 | c == 1 | d == 1:
-        pass
-    if a == 1 | b == 1 | c == 1 | d == 1:
-        pass
-
+        if d == 2:
+            if e == 2:
+                pass
+        if e == 2:
+            pass
+        if f == 2:
+            pass
 """
     visitor = SymbolicVisitor()
     tree = ast.parse(sample)
