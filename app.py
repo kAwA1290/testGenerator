@@ -94,17 +94,17 @@ class TestGenerator:
                 exec("%s = Int('%s')" % (s, s))
             for equation in constraints:
                 s = Solver()
-                print(equation[1])
                 s.add(eval(equation[1]))
                 cnt = 0
                 if s.check() == unsat:
-                    print(f'unsat {equation[0]}')
+                    print(f'unsat: {equation[0]}')
                     continue
-                print(f'sat {equation[0]}')
+                print(f'sat: {equation[0]}')
                 while(s.check() == sat and cnt < case_max):
                     m = s.model()
-                    print(m)
+                    print(f'testcase: {m}')
                     cnt += 1
+                print()
 
 # ast.NodeVisitorは、astを探索するための基底クラスである。
 # このクラスを継承し、探索したい型のメソッドをオーバーライドする。
@@ -137,9 +137,9 @@ class SymbolicVisitor(ast.NodeVisitor):
     def visit_If(self, node: ast.If):
         self.if_depth += 1
         res = self.visit(node.test)
-        if self.if_depth == 1:
-            self.constraints.append(res)
         self.if_depth -= 1
+        if self.if_depth == 0:
+            self.constraints.append(res)
 
         for body in node.body:
             if isinstance(body, ast.If):
@@ -147,7 +147,8 @@ class SymbolicVisitor(ast.NodeVisitor):
                 rec_res = self.visit(body)
                 self.if_depth -= 1
                 if self.if_depth == 0:
-                    self.constraints.append(rec_res)
+                    print(f'And({res}, {rec_res})')
+                          #self.constraints.append(f'And({res}, {rec_res})')
         return res
 
     def visit_BoolOp(self, node: ast.BoolOp):
@@ -187,11 +188,16 @@ class SymbolicVisitor(ast.NodeVisitor):
 
 if __name__ == "__main__":
     sample = """
-if a > 0 & b > 0 & c < 5 & d < 5:
+if a > 0 | b > 0 | c < 5 & c < b & d < 5 & e < 5 | f < 5:
     if a < 2 | b < 2 | c > 3 | d > 3:
         print("a is not 1")
     if a == 1 | b == 1 | c == 1 | d == 1:
         pass
+    if a == 1 | b == 1 | c == 1 | d == 1:
+        pass
+    if a == 1 | b == 1 | c == 1 | d == 1:
+        pass
+
 """
     visitor = SymbolicVisitor()
     tree = ast.parse(sample)
