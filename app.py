@@ -56,28 +56,25 @@ class Converter:
 
     def to_z3logic(self):
         p = self.parts
-        variables = [f'({p.lefts[i]} {p.ops[i]} {p.rights[i]})' for i in range(len(p.lefts))]
-        def build_z3logic(start, end):
-            if start == end:
-                return variables[start]
-            op = p.bin_ops[start]
-            left_logic = variables[start]
-            right_logic = build_z3logic(start + 1, end)
-
-            if op == '&':
-                return f'And({left_logic}, {right_logic})'
-            elif op == '|':
-                return f'Or({left_logic}, {right_logic})'
-            else:
-                raise ValueError(f"Unsupported operator: {op}")
-        z3_logic = build_z3logic(0, len(p.lefts) - 1)
-        return z3_logic
+        res = f'({p.lefts[0]} {p.ops[0]} {p.rights[0]})'
+        for bin_op in p.bin_ops:
+            res = f'{"And" if bin_op == "&" else "Or"}(' + res
+        for i in range(1, len(p.lefts)):
+            res += f', ({p.lefts[i]} {p.ops[i]} {p.rights[i]}))'
+        return res
 
     def to_logic(self, left, ops, comparators):
         self.to_parts(left, ops, comparators)
         pylogic = self.to_pylogic()
         z3logic = self.to_z3logic()
         return [pylogic, z3logic]
+
+    def assign_to_logic(self, l):
+        if isinstance(l, int):
+            return f'{l}'
+        elif isinstance(l[0], int):
+            return f'{l[0]}{self.conv_op(l[1])}{l[2]}'
+        return self.assign_to_logic(l[0]) + f'{self.conv_op(l[1])}{l[2]}'
 
     class Parts:
 
@@ -90,81 +87,85 @@ class Converter:
 class TestGenerator:
 
         def __init__(self):
-            self.solver = Solver()
+            pass
 
-        def generate(self, symbols, constraints):
-            # 変数定義
-            n = Int("n")
-            x = Int("x")
-            y = Int("y")
-            
-            # 基本制約
-            s = Solver()
-            s.add(n > 0, x > 0, y > 0)
-            s.add(13*x > (n+110))
-            s.add(7*y == (240-n))
-            
-            # 解を探索
-            while(s.check() == sat):
-                # 解の表示
-                m = s.model()
-                print(m)
-                
-                # 解を制約条件に追加
-                s.add(Not(n == m[n]))
-
-            #for constraint in constraints:
-            #    self.solver.add(constraint)
-            #print(self.solver.check())
-            #print(self.solver.model())
+        def generate(self, symbols, constraints, case_max):
+            for s in symbols:
+                exec("%s = Int('%s')" % (s, s))
+            for equation in constraints:
+                s = Solver()
+                print(equation[1])
+                s.add(eval(equation[1]))
+                cnt = 0
+                if s.check() == unsat:
+                    print(f'unsat {equation[0]}')
+                    continue
+                print(f'sat {equation[0]}')
+                while(s.check() == sat and cnt < case_max):
+                    m = s.model()
+                    print(m)
+                    cnt += 1
 
 # ast.NodeVisitorは、astを探索するための基底クラスである。
 # このクラスを継承し、探索したい型のメソッドをオーバーライドする。
-# ASTの以下の部分を探索する。
-# ast.If
-#     ast.left
-#     ast.ops
-#     ast.If.comparators
-#         ast.Compare
-#         ast.BoolOp
-#         ast.Constant
-#         ast.Name
-#     ast.Constant
 class SymbolicVisitor(ast.NodeVisitor):
 
     def __init__(self):
         super().__init__()
+        self.clear()
+
+    def clear(self):
         # 変数を格納する辞書, 変数に対する演算も保持する
         self.store = {}
         # 制約を格納するリスト, 各論理式を、[right, Operator, left]
         self.constraints = []
+        self.symbols = set()
         self.testcases = []
         self.conv = Converter()
+        self.generator = TestGenerator()
+        self.if_depth = 0
+        self.if_test_depth = 0
+
+    def gen_testcases(self):
+        self.generator.generate(self.symbols, self.constraints, 1)
 
     def visit_Assign(self, node: ast.Assign):
-        # TODO 複数変数への代入に対応する
-        #target = node.targets[0].id
-        return ;
+        target = node.targets[0].id
+        value = self.visit(node.value)
+        self.store[target] = self.conv.assign_to_logic(value)
 
     def visit_If(self, node: ast.If):
-        # Compare, BoolOpによって表される制約を抽出する
-        #print(node.test)
-        #print(self.visit(node.test))
-        print(self.visit(node.test))
-        return ;
+        self.if_depth += 1
+        res = self.visit(node.test)
+        if self.if_depth == 1:
+            self.constraints.append(res)
+        self.if_depth -= 1
+
+        for body in node.body:
+            if isinstance(body, ast.If):
+                self.if_depth += 1
+                rec_res = self.visit(body)
+                self.if_depth -= 1
+                if self.if_depth == 0:
+                    self.constraints.append(rec_res)
+        return res
 
     def visit_BoolOp(self, node: ast.BoolOp):
         op = node.op.__class__.__name__
         left = self.visit(node.values[0])
         right = self.visit(node.values[1])
-        return f'({left} {self.conv.conv_op(op)} {right})'
+        py = f'({left[0]} {self.conv.conv_op(op)} {right[0]})'
+        z3 = f'{op}({left[1]}, {right[1]})'
+        return [py, z3]
 
     def visit_Compare(self, node: ast.Compare):
         left = self.visit(node.left)
         ops = [op.__class__.__name__ for op in node.ops]
         comparators = [self.visit(comparator) for comparator in node.comparators]
         self.conv.to_parts(left, ops, comparators)
-        return self.conv.to_logic(left, ops, comparators)
+        # return [pylogic, z3logic]
+        res = self.conv.to_logic(left, ops, comparators)
+        return res
 
     def visit_BinOp(self, node: ast.BinOp):
         left = self.visit(node.left)
@@ -176,47 +177,24 @@ class SymbolicVisitor(ast.NodeVisitor):
         return node.value
 
     def visit_Name(self, node: ast.Name):
-        return node.id
+        self.symbols.add(node.id)
+        try:
+            res = self.store[node.id]
+        except:
+            res = node.id
+        return res
 
 
 if __name__ == "__main__":
     sample = """
-a = 1
-b = 2 * b
-c = 3 * a * b
-d = 4 * a * b + c
-e, f = 5, 6
-if a == 1 & b == 2 & c > 3 & d < 4:
-    print("a is 1")
+if a > 0 & b > 0 & c < 5 & d < 5:
+    if a < 2 | b < 2 | c > 3 | d > 3:
+        print("a is not 1")
+    if a == 1 | b == 1 | c == 1 | d == 1:
+        pass
 """
     visitor = SymbolicVisitor()
     tree = ast.parse(sample)
-    visitor.generic_visit(tree)
-    print()
-
-    sample = """
-a = 1
-b = 2 * b
-c = 3 * a * b
-if a != 1 or b <= 2 & c > 3:
-    print("a is 1")
-"""
-    visitor = SymbolicVisitor()
-    tree = ast.parse(sample)
-    visitor.generic_visit(tree)
-    print()
-
-    sample = """
-a = 1
-b = 2 * b
-c = 3 * a * b
-if True or a > 1 or False:
-    print("a is 1")
-"""
-    visitor = SymbolicVisitor()
-    tree = ast.parse(sample)
-    visitor.generic_visit(tree)
-    print()
-
-
+    visitor.visit(tree)
+    visitor.gen_testcases()
 
